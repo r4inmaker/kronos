@@ -88,8 +88,8 @@ func sprintTree(id accessibility.NodeID, nodeMap map[accessibility.NodeID]*acces
 	}
 
 	indent := strings.Repeat("  ", depth)
-	role := getNodeRole(node)
-	name := getNodeName(node)
+	role := GetNodeRole(node)
+	name := GetNodeName(node)
 
 
 	switch name {
@@ -110,7 +110,7 @@ func FilterNodeByRole(roles... string) nodeFilterFunc {
 		return func(node *accessibility.Node) bool {
 			if len(roles) == 0 {return true}
 			if node.Role == nil {return false}
-				nodeRole := strings.Trim(string(node.Role.Value), `"`)
+				nodeRole := GetNodeRole(node)
 				for _, r := range roles {
 					if nodeRole == r {
 						return true
@@ -124,7 +124,7 @@ func FilterNodeByName(names... string) nodeFilterFunc {
 		return func(node *accessibility.Node) bool {
 			if len(names) == 0 {return true}
 			if node.Name == nil {return false}
-			nodeName := strings.Trim(string(node.Name.Value), `"`)
+			nodeName := GetNodeName(node)
 			for _, n := range names {
 				if strings.EqualFold(nodeName, n) {
 					return true
@@ -162,10 +162,11 @@ func FilterNodeDefault() nodeFilterFunc {
 	}
 }
 
+
 // XPath Selector
 func SelectorFromNode(node *accessibility.Node) string {
-    role := strings.Trim(string(node.Role.Value), `"`)
-    name := strings.Trim(string(node.Name.Value), `"`)
+    role := GetNodeRole(node)
+    name := GetNodeName(node)
 
     switch role {
     case "button":
@@ -180,16 +181,17 @@ func SelectorFromNode(node *accessibility.Node) string {
 }
 
 // Utility functions
-func getNodeName(node *accessibility.Node) string {
+func GetNodeName(node *accessibility.Node) string {
 	if node.Name == nil {
 		return ""
 	}
 	return strings.Trim(string(node.Name.Value), `"`)
 }
 
-func getNodeRole(node *accessibility.Node) string {
+func GetNodeRole(node *accessibility.Node) string {
 	if node.Role == nil {
 		return ""
 	}
 	return strings.Trim(string(node.Role.Value), `"`)
 }
+
