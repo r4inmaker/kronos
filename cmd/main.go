@@ -8,9 +8,6 @@ import (
 	"github.com/r4inmaker/kronos/internal/browser"
 )
 
-
-
-
 func main() {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", false),
@@ -28,25 +25,26 @@ func main() {
 	b.Execute(
 		b.Navigate("https://linkedin.com"),
 		b.WaitReady("body"),
-	)	
+	)
 	b.BuildTree()
 	b.BuildFilteredTree(
 		browser.FilterNodeAND(
-				browser.FilterNodeByName("sign in"),
-				browser.FilterNodeByRole("link"),
-			),
+			browser.FilterNodeByName("sign in"),
+			//browser.FilterNodeByRole("button"),
+		),
 	)
-	
 
 	fmt.Println(b.SprintTree(true))
 
-	
-
 	for _, node := range b.FilteredNodeMap {
-		if browser.FilterNodeByName("sign in")(node) {
+		if browser.FilterNodeAND(
+			browser.FilterNodeByName("sign in"),
+			browser.FilterNodeByRole("link"),
+		)(node) {
 			b.Execute(
 				b.Click(browser.SelectorFromNode(node)),
-			)		
+			)
+			break
 		}
 	}
 }
