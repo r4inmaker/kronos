@@ -30,12 +30,20 @@ func (b *Browser) BuildTree() error {
 		b.NodeMap[n.NodeID] = n
 	}
 
+	// Find the root
+	b.Root = b.FindRoot()
+
 	return nil
 }
 
-func (b *Browser) BuildFilteredTree(filterFunc nodeFilterFunc) {
+func (b *Browser) BuildFilteredTree() error {
 	filteredNodeMap := make(map[accessibility.NodeID]*accessibility.Node)
+	// Rebuild the full tree first
+	if err := b.BuildTree(); err != nil {
+		return err
+	}
 
+	// Build the filtered tree
 	var recurse func(node *accessibility.Node) bool
 	recurse = func(node *accessibility.Node) bool {
 		matched := false
@@ -50,7 +58,7 @@ func (b *Browser) BuildFilteredTree(filterFunc nodeFilterFunc) {
 		}
 
 		// Check the node itself
-		if filterFunc(node) {
+		if b.FilterFunc(node) {
 			matched = true
 		}
 
@@ -64,48 +72,63 @@ func (b *Browser) BuildFilteredTree(filterFunc nodeFilterFunc) {
 		return matched
 	}
 
-	recurse(b.Nodes[0])
+	recurse(b.Root)
 	b.FilteredNodeMap = filteredNodeMap
+	return nil
 }
 
-// Printing the tree for the LLM
-func (b *Browser) SprintTree(filtered bool) string {
-	var sb strings.Builder
-	var nodeMap map[accessibility.NodeID]*accessibility.Node
-	switch filtered {
-	case true:
-		nodeMap = b.FilteredNodeMap
-	default:
-		nodeMap = b.NodeMap
-	}
-	sprintTree(b.Nodes[0].NodeID, nodeMap, &sb, 0)
-	return sb.String()
+
+func (b *Browser) FindRoot() *accessibility.Node {
+    // Build a set of all child IDs
+    childIDs := make(map[accessibility.NodeID]bool)
+    for _, n := range b.Nodes {
+        for _, cid := range n.ChildIDs {
+            childIDs[cid] = true
+        }
+    }
+    // Root is the node that is nobody's child
+    for _, n := range b.Nodes {
+        if !childIDs[n.NodeID] {
+            return n
+        }
+    }
+    return b.Nodes[0] // fallback
+}
+
+func (b *Browser) SprintTree(filter nodeFilterFunc) string {
+    if b.Root == nil {
+        return ""
+    }
+    var sb strings.Builder
+    sprintTree(b.Root.NodeID, b.NodeMap, &sb, 0, filter)
+    return sb.String()
 }
 
 func sprintTree(id accessibility.NodeID, nodeMap map[accessibility.NodeID]*accessibility.Node,
-	builder *strings.Builder, depth int) {
-	node, ok := nodeMap[id]
-	if !ok {
-		return
-	}
+    builder *strings.Builder, depth int, filter nodeFilterFunc) {
+    node, ok := nodeMap[id]
+    if !ok {
+        return
+    }
 
-	indent := strings.Repeat("  ", depth)
-	role := GetNodeRole(node)
-	name := GetNodeName(node)
+    // only print if this node itself matches the filter
+    if filter == nil || filter(node) {
+        indent := strings.Repeat("  ", depth)
+        role := GetNodeRole(node)
+        name := GetNodeName(node)
+        if name == "" {
+            builder.WriteString(fmt.Sprintf("%s%s [%s]\n", indent, role, id))
+        } else {
+            builder.WriteString(fmt.Sprintf("%s%s %q [%s]\n", indent, role, name, id))
+        }
+    }
 
-	switch name {
-	case "":
-		builder.WriteString(fmt.Sprintf("%s%s [%s]\n", indent, role, id))
-	default:
-		builder.WriteString(fmt.Sprintf("%s%s %q [%s]\n", indent, role, name, id))
-	}
-
-	for _, childID := range node.ChildIDs {
-		sprintTree(childID, nodeMap, builder, depth+1)
-	}
+    for _, childID := range node.ChildIDs {
+        sprintTree(childID, nodeMap, builder, depth+1, filter)
+    }
 }
 
-// Node filtering (focus only on relevant nodes)
+// Filter functions
 type nodeFilterFunc func(node *accessibility.Node) bool
 
 func FilterNodeByRole(roles ...string) nodeFilterFunc {
@@ -166,13 +189,26 @@ func FilterNodeOR(filterFuncs ...nodeFilterFunc) nodeFilterFunc {
 	}
 }
 
-func FilterNodeDefault() nodeFilterFunc {
-	return func(node *accessibility.Node) bool {
-		return true
-	}
+func FilterNodeInteractable() nodeFilterFunc {
+    return FilterNodeByRole(
+        "button",
+        "link",
+        "textbox",
+        "checkbox",
+        "radio",
+        "combobox",
+        "menuitem",
+        "tab",
+        "heading",
+        "alert",
+        "dialog",
+        "main",
+        "form",
+        "RootWebArea",
+    )
 }
 
-// XPath Selector
+// Selector functions
 func SelectorFromNode(node *accessibility.Node) string {
 	role := GetNodeRole(node)
 	name := GetNodeName(node)
@@ -189,8 +225,6 @@ func SelectorFromNode(node *accessibility.Node) string {
 	}
 }
 
-func (b *Browser) A() {}
-
 // Utility functions
 func GetNodeName(node *accessibility.Node) string {
 	if node.Name == nil {
@@ -204,4 +238,8 @@ func GetNodeRole(node *accessibility.Node) string {
 		return ""
 	}
 	return strings.Trim(string(node.Role.Value), `"`)
+}
+
+func GetNodeID(node *accessibility.Node) string {
+	return strings.Trim(string(node.NodeID), `"`)
 }
