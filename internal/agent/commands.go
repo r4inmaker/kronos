@@ -89,7 +89,7 @@ func (ce *CommandEngine) DispatchBrowserCommand(action Action) error {
 			}
 			ce.ActionHistory = append(ce.ActionHistory, SummarizedAction{
 					Action: desc,
-					Result: "attempted",
+					Result: "success",
 			})
 
 	case "send_keys":
@@ -111,7 +111,7 @@ func (ce *CommandEngine) DispatchBrowserCommand(action Action) error {
 			}
 			ce.ActionHistory = append(ce.ActionHistory, SummarizedAction{
 					Action: desc,
-					Result: "attempted",
+					Result: "success",
 			})
 
 	default: return fmt.Errorf("invalid command name")
