@@ -9,7 +9,7 @@ import (
 	"github.com/r4inmaker/kronos/internal/logger"
 )
 
-func main() {	
+func main() {
 	godotenv.Load()
 	agentLogger := logger.NewLogger("AGENT")
 
@@ -23,22 +23,22 @@ func main() {
 	defer cancel()
 	ctx, cancel = chromedp.NewContext(ctx)
 	defer cancel()
-	//ctx, cancel = context.WithTimeout(ctx, 15*time.Second)
-	//defer cancel()
 
 	sysPrompt := `You are a browser automation agent. You control a real web browser.
 
-	Each cycle you receive:
+	On each cycle you receive:
 	- [Browser State]: accessibility tree of the current page (role, name, node_id)
 	- [Action History]: what you have done so far and the results
 
 	You must respond with JSON matching this exact schema:
 	{
-		"reasoning": "your step by step thinking",
+		"reasoning": "your step by step thinking for provided action(s)",
 		"actions": [
-			{ "type": "browser"|"agent", "name": "...", "params": { ... } }
+			{ "type": "browser"|"agent", "name": "...", "params": { ... }, "reasoning" }
 		]
 	}
+
+	Each action must include its own short reasoning, so that command history is consistent.
 
 	BROWSER ACTIONS (type: "browser"):
 		navigate    { "url": string }
@@ -47,15 +47,18 @@ func main() {
 								simulate=true for OTP/character-by-character inputs
 
 	AGENT ACTIONS (type: "agent"):
-		update_history  { "index": -1|number, "action": { "action": string, "result": string } }
-										index=-1 to append, index=N to overwrite entry N
 		done            {}
 
 	RULES:
 	- Only use node_ids visible in the current browser state, never guess
 	- Actions execute in order, stop on first failure
 	- Use update_history to summarize completed sub-goals or correct stale entries
-	- Always emit done when the task is complete`
+	- Always emit done when the task is complete, or if you find yourself in an unrecoverable cycle
+	- You are responsible for providing reasoning to actions, which will be autoregressively fed into
+	  you on the next cycle, which means you need to provide reasoning for a action(s) as well as for
+	  each individual action. Be verobose so you dont get stuck in a cycle but concise enough to be
+	  mindful of your token limit.
+	`
 
 	task := `
 		Go to LinkedIn and log in using username: lizmanlizmanson@gmail.com and password: lizmajajca.
@@ -64,4 +67,14 @@ func main() {
 
 	a := agent.NewAgent(ctx, "BORIS", task, sysPrompt, agentLogger)
 	a.Run()
+
+	// b := browser.NewBrowser(ctx, agentLogger)
+	// b.Execute(
+	// 	b.Navigate("https://linkedin.com"),
+	// 	b.WaitReady("body"),
+	// )
+	// b.BuildTree()
+	// agentLogger.Info(b.SprintTree(
+	// 	browser.FilterNodeDefault(),
+	// ))
 }
