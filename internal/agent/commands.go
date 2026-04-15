@@ -42,7 +42,7 @@ func (ce *CommandEngine) DispatchCommands(resp *AgentResponse) (bool, error) {
 			if err != nil {
 				return false, err
 			}
-			ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
+			// ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
 
 		case "agent":
 			exit, err := ce.DispatchAgentCommand(action)
@@ -52,7 +52,7 @@ func (ce *CommandEngine) DispatchCommands(resp *AgentResponse) (bool, error) {
 			if exit {
 				return true, err
 			}
-			ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
+			// ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
 
 		default:
 			return false, fmt.Errorf("unknown action type: %s", action.Type)
@@ -89,6 +89,9 @@ func (ce *CommandEngine) DispatchBrowserCommand(action Action) error {
 			Result:      result,
 		})
 
+		// Log
+		ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
+
 	case "click":
 		var params ClickParams
 		if err := json.Unmarshal(action.Params, &params); err != nil {
@@ -119,6 +122,9 @@ func (ce *CommandEngine) DispatchBrowserCommand(action Action) error {
 			Reasoning:   action.Reasoning,
 			Result:      result,
 		})
+
+		// Log
+		ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
 
 	case "send_keys":
 		var params SendKeysParams
@@ -152,6 +158,9 @@ func (ce *CommandEngine) DispatchBrowserCommand(action Action) error {
 			Result:      result,
 		})
 
+		// Log
+		ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
+
 	default:
 		return fmt.Errorf("invalid browser command: %s", action.Name)
 	}
@@ -168,6 +177,9 @@ func (ce *CommandEngine) DispatchAgentCommand(action Action) (bool, error) {
 			Name: "done",
 			Reasoning: action.Reasoning,
 		})
+		// Log
+		ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
+
 		ce.cancelFunc()
 		return true, nil
 

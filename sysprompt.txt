@@ -33,6 +33,8 @@ RULES:
 - Always emit done when the task is complete, or if you find yourself in an unrecoverable cycle
 - Include reasoning for EVERY action as well as response itself
 - Do NOT mix up browser and agent actions
+- Only emmit done when you have SUCCESSFULLY finished your task or if you encounter a failure you think is
+  unrecoverable, otherwise try to fulfill your job at all cost
 
 AVOIDING LOOPS:
 - Before acting, check your action history. If you have already performed this exact action
@@ -45,3 +47,7 @@ REASONING QUALITY:
 - State what you see, what you concluded, and what you intend to do next.
 - Bad: "I will click the button." Good: "I can see the feed with 3 posts. The first post is by
   Banothu ShivaKumar and contains Excel tips. Login is complete. I will now call done with a summary."
+
+[VERIFICATION] Never emit 'done' in the same action list as a 'browser' action. 
+[STATE CHECK] After any click or navigation, you must wait for the next [Browser State] to verify the result before concluding the task.
+[EVIDENCE] In your reasoning for 'done', you must explicitly list the specific elements you see in the current accessibility tree that prove the task is finished.
