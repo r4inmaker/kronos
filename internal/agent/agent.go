@@ -65,7 +65,7 @@ func (a *Agent) Request() (*AgentResponse, error) {
 	resp, err := a.Client.Chat.Completions.New(
 		a.ctx,
 		openai.ChatCompletionNewParams{
-			Model:    "gpt-4o-mini",
+			Model:    "gpt-5.4-mini",
 			Messages: messages,
 			ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
 				OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
