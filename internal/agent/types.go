@@ -24,13 +24,14 @@ type SummarizedMilestone struct {
 }
 
 type Action struct {
-	Type        string          `json:"type"`
+	Type        string          `json:"type" jsonschema:"enum=browser,enum=agent"`
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	Reasoning   string          `json:"reasoning"`
 	Result      string          `json:"result"`
 	Params      json.RawMessage `json:"params"`
 }
+
 
 type NavigateParams struct {
 	URL string `json:"url"`

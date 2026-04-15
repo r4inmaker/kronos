@@ -229,3 +229,11 @@ func GetNodeValue(node *accessibility.Node) string {
 	}
 	return ""
 }
+
+func FormatNode(node *accessibility.Node) string {
+	value := GetNodeValue(node)
+	if value != "" {
+		value = fmt.Sprintf(" %q ", value)
+	}
+	return fmt.Sprintf("<NODE [%s] %q%s>", GetNodeRole(node), GetNodeName(node), value)
+}

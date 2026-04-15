@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	openai "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -19,41 +20,41 @@ type Agent struct {
 	Task          string
 	SysPrompt     string
 	Client        openai.Client
-	CommandEngine *CommandEngine
 	Schema        map[string]any
 	Logger        *logger.Logger
 	ctx           context.Context
+	cancelFunc    context.CancelFunc
 	wg            *sync.WaitGroup
+	*CommandEngine
 }
 
-func NewAgent(ctx context.Context, name string, sysPrompt string, task string, logger *logger.Logger) *Agent {
-	// LLM client
-	client := openai.NewClient(
-		option.WithAPIKey(os.Getenv("OPENAI_API_KEY")),
-	)
+func NewAgent(ctx context.Context, cancelFunc context.CancelFunc, name string, sysPrompt string, task string, logger *logger.Logger) *Agent {
+  // Use the DeepSeek API key and BaseURL
+  client := openai.NewClient(
+    option.WithAPIKey(os.Getenv("OPENAI_API_KEY")),
+    option.WithBaseURL("https://api.openai.com/v1"),
+  )
 
-	// Response schema
-	schema := GenerateSchema[AgentResponse]()
+  schema := GenerateSchema[AgentResponse]()
+  b := browser.NewBrowser(ctx, logger)
 
-	// Browser
-	b := browser.NewBrowser(ctx, logger)
-
-	return &Agent{
-		Name:          name,
-		Task:          task,
-		Client:        client,
-		CommandEngine: NewCommandEngine(b, sysPrompt, task),
-		Schema:        schema,
-		Logger:        logger,
-		ctx:           ctx,
-		wg:            &sync.WaitGroup{},
-	}
+  return &Agent{
+    Name:          name,
+    Task:          task,
+    Client:        client,
+    CommandEngine: NewCommandEngine(b, sysPrompt, task, cancelFunc),
+    Schema:        schema,
+    Logger:        logger,
+    ctx:           ctx,
+    cancelFunc:    cancelFunc,
+    wg:            &sync.WaitGroup{},
+  }
 }
 
 func (a *Agent) Request() (*AgentResponse, error) {
 	stateMsg := fmt.Sprintf("[Browser State]\n%s\n\n[Action History]\n%s",
-		a.CommandEngine.Browser.SprintTree(a.CommandEngine.Browser.FilterFunc),
-		a.CommandEngine.FormatActionHistory(10),
+		a.Browser.SprintTree(a.CommandEngine.Browser.FilterFunc),
+		a.FormatActionHistory(10),
 	)
 
 	messages := []openai.ChatCompletionMessageParamUnion{
@@ -64,7 +65,7 @@ func (a *Agent) Request() (*AgentResponse, error) {
 	resp, err := a.Client.Chat.Completions.New(
 		a.ctx,
 		openai.ChatCompletionNewParams{
-			Model:    "gpt-4o",
+			Model:    "gpt-4o-mini",
 			Messages: messages,
 			ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
 				OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
@@ -91,31 +92,37 @@ func (a *Agent) Request() (*AgentResponse, error) {
 	return &agentResp, nil
 }
 
+
+
 func (a *Agent) Run() {
 	waitFlag := false
 
 	for {
 		// Wait until DOM is stabilized
 		if waitFlag {
-			a.CommandEngine.Browser.Execute(
-				a.CommandEngine.Browser.WaitReady("body"),
+			a.Browser.Execute(
+				 a.Browser.WaitForLifecycle("networkIdle", 5*time.Second),
 			)
 		}
 		waitFlag = true
 
-		if err := a.CommandEngine.Browser.BuildTree(); err != nil {
+		if err := a.Browser.BuildTree(); err != nil {
 			log.Fatal(err)
 		}
-		//a.Logger.Info(a.CommandEngine.Browser.SprintTree(a.CommandEngine.Browser.FilterFunc))
-		a.Logger.Info(a.CommandEngine.FormatActionHistory(10))
+		//a.Logger.Info(fmt.Sprintf("NodeTreeDim: %d", len(a.Browser.Nodes)))
 
 		resp, err := a.Request()
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		if err = a.CommandEngine.DispatchCommands(resp); err != nil {
+		exit, err := a.DispatchCommands(resp)
+		if err != nil {
 			log.Fatal(err)
+		}
+
+		if exit {
+			return
 		}
 	}
 }

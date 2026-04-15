@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/chromedp/cdproto/accessibility"
 	"github.com/chromedp/cdproto/dom"
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/r4inmaker/kronos/internal/logger"
@@ -27,12 +29,22 @@ func NewBrowser(ctx context.Context, logger *logger.Logger) *Browser {
 		Logger:     logger,
 		Nodes:      make([]*accessibility.Node, 0),
 		NodeMap:    make(map[accessibility.NodeID]*accessibility.Node),
-		FilterFunc: FilterNodeInteractable(),
+		FilterFunc: FilterNodeDefault(),
 	}
 }
 
 func (b *Browser) Execute(actions ...chromedp.Action) error {
-	return chromedp.Run(b.Context, actions...)
+	var throttledActions []chromedp.Action
+	if len(actions) == 1 {
+		return chromedp.Run(b.Context, actions[0])
+	}
+
+	for _, action := range actions {
+		throttledActions = append(throttledActions, action)
+		throttledActions = append(throttledActions, chromedp.Sleep(200 * time.Millisecond))
+	}
+
+	return chromedp.Run(b.Context, throttledActions...)
 }
 
 func (b *Browser) Navigate(url string) chromedp.Action {
@@ -62,8 +74,6 @@ func (b *Browser) ClickNode(id int64) chromedp.Action {
 				WithObjectID(obj.ObjectID).
 				Do(ctx)
 			if err == nil && exceptionDetails == nil {
-				b.Logger.Info(fmt.Sprintf(`Clicked node: "%s" %s [%s]`,
-					GetNodeName(node), GetNodeRole(node), GetNodeID(node)))
 				return nil
 			}
 			b.Logger.Debug(fmt.Sprintf("primary click failed (%v), falling back to XPath", err))
@@ -107,8 +117,6 @@ func (b *Browser) SendKeysNode(id int64, keys string, simulate ...bool) chromedp
 					}).
 					Do(ctx)
 				if err == nil && exceptionDetails == nil {
-					b.Logger.Info(fmt.Sprintf(`Sent keys to node: "%s" %s [%s]`,
-						GetNodeName(node), GetNodeRole(node), GetNodeID(node)))
 					return nil
 				}
 				b.Logger.Debug(fmt.Sprintf("primary sendkeys failed (%v), falling back to XPath", err))
@@ -123,5 +131,42 @@ func (b *Browser) SendKeysNode(id int64, keys string, simulate ...bool) chromedp
 			return fmt.Errorf("primary sendkeys failed and no xpath fallback available")
 		}
 		return chromedp.SendKeys(xpath, keys, chromedp.BySearch).Do(ctx)
+	})
+}
+
+// Wait
+func (b *Browser) WaitForLifecycle(eventName string, timeout time.Duration) chromedp.Action {
+	return chromedp.ActionFunc(func(ctx context.Context) error {
+		// enable lifecycle events
+		if err := page.Enable().Do(ctx); err != nil {
+			return err
+		}
+		if err := page.SetLifecycleEventsEnabled(true).Do(ctx); err != nil {
+			return err
+		}
+
+		cctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		done := make(chan struct{})
+
+		chromedp.ListenTarget(cctx, func(ev interface{}) {
+			if e, ok := ev.(*page.EventLifecycleEvent); ok {
+				if e.Name == eventName {
+					select {
+					case <-done:
+					default:
+						close(done)
+					}
+				}
+			}
+		})
+
+		select {
+		case <-done:
+			return nil
+		case <-cctx.Done():
+			return fmt.Errorf("timeout waiting for %s", eventName)
+		}
 	})
 }

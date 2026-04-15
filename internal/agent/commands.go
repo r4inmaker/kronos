@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -14,44 +15,61 @@ type CommandEngine struct {
 	Browser       *browser.Browser
 	Prompt        string
 	ActionHistory []Action
+	cancelFunc    context.CancelFunc
 }
 
-func NewCommandEngine(browser *browser.Browser, sysPrompt, task string) *CommandEngine {
+func NewCommandEngine(browser *browser.Browser, sysPrompt, task string, cancelFunc context.CancelFunc) *CommandEngine {
 	initPrompt := fmt.Sprintf("[Objective]\n%s\n\n[Task]\n%s\n", sysPrompt, task)
 
 	return &CommandEngine{
 		Browser:       browser,
 		Prompt:        initPrompt,
 		ActionHistory: make([]Action, 0),
+		cancelFunc: 	 cancelFunc,	
 	}
 }
 
 // Dispatch commands
-func (ce *CommandEngine) DispatchCommands(resp *AgentResponse) error {
+func (ce *CommandEngine) DispatchCommands(resp *AgentResponse) (bool, error) {
 	if len(resp.Actions) == 0 {
-		return fmt.Errorf("agent responded with empty action slice")
+		return false, fmt.Errorf("agent responded with empty action slice")
 	}
+
 	for _, action := range resp.Actions {
 		switch action.Type {
 		case "browser":
-			ce.DispatchBrowserCommand(action)
+			err := ce.DispatchBrowserCommand(action)
+			if err != nil {
+				return false, err
+			}
+			ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
+
 		case "agent":
-			ce.DispatchAgentCommand(action)
+			exit, err := ce.DispatchAgentCommand(action)
+			if err != nil {
+				return false, err
+			}
+			if exit {
+				return true, err
+			}
+			ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
+
 		default:
-			return fmt.Errorf("unknown action type: %s", action.Type)
+			return false, fmt.Errorf("unknown action type: %s", action.Type)
 		}
 	}
-	return nil
+
+	return false, nil
 }
 
 // Browser command dispatch
-func (ce *CommandEngine) DispatchBrowserCommand(action Action) {
+func (ce *CommandEngine) DispatchBrowserCommand(action Action) error {
 	switch action.Name {
 
 	case "navigate":
 		var params NavigateParams
 		if err := json.Unmarshal(action.Params, &params); err != nil {
-			ce.Browser.Logger.Info(fmt.Sprintf("error unmarshalling navigate action: %v", err))
+			return err
 		}
 
 		// Execute action
@@ -74,20 +92,20 @@ func (ce *CommandEngine) DispatchBrowserCommand(action Action) {
 	case "click":
 		var params ClickParams
 		if err := json.Unmarshal(action.Params, &params); err != nil {
-			ce.Browser.Logger.Info(fmt.Sprintf("error unmarshalling click action: %v", err))
+			return err
 		}
 
 		// Description
 		description := fmt.Sprintf("clicked node [%s]", params.NodeID)
 		if node, ok := ce.Browser.NodeMap[nodeID(params.NodeID)]; ok {
-			description = fmt.Sprintf("clicked node %s%s %q <%s> [%s]\n",
-				browser.GetNodeRole(node), browser.GetNodeName(node),
-				browser.GetNodeValue(node), params.NodeID)
+			description = fmt.Sprintf("clicked node %s",
+				browser.FormatNode(node),
+			)
 		}
 
 		// Execute action
 		var result string
-		if err := ce.Browser.Execute(ce.Browser.WaitReady("body"), ce.Browser.ClickNode(params.NodeID)); err != nil {
+		if err := ce.Browser.Execute(ce.Browser.ClickNode(params.NodeID)); err != nil {
 			result = fmt.Sprintf("failure, error: %v", err)
 		} else {
 			result = "success"
@@ -105,21 +123,21 @@ func (ce *CommandEngine) DispatchBrowserCommand(action Action) {
 	case "send_keys":
 		var params SendKeysParams
 		if err := json.Unmarshal(action.Params, &params); err != nil {
-			ce.Browser.Logger.Info(fmt.Sprintf("error unmarshalling click action: %v", err))
+			return err
 		}
 
 		// Description
 		description := fmt.Sprintf("send keys %q to node [%s]", params.Keys, params.NodeID)
 		if node, ok := ce.Browser.NodeMap[nodeID(params.NodeID)]; ok {
-			description = fmt.Sprintf("sent keys %q node %s%s %q <%s> [%s]\n",
+			description = fmt.Sprintf("sent keys %q to node %s",
 				params.Keys,
-				browser.GetNodeRole(node), browser.GetNodeName(node),
-				browser.GetNodeValue(node), params.NodeID)
+				browser.FormatNode(node),
+			)
 		}
 
 		// Execute action
 		var result string
-		if err := ce.Browser.Execute(ce.Browser.WaitReady("body"), ce.Browser.SendKeysNode(params.NodeID, params.Keys, params.Simulate)); err != nil {
+		if err := ce.Browser.Execute(ce.Browser.SendKeysNode(params.NodeID, params.Keys, params.Simulate)); err != nil {
 			result = fmt.Sprintf("failed sending keys %q to node, error: %v", params.Keys, err)
 		} else {
 			result = "success"
@@ -135,20 +153,26 @@ func (ce *CommandEngine) DispatchBrowserCommand(action Action) {
 		})
 
 	default:
-		// TODO?
+		return fmt.Errorf("invalid browser command: %s", action.Name)
 	}
+
+	return nil
 }
 
 // Agent command dispatch
-func (ce *CommandEngine) DispatchAgentCommand(action Action) {
+func (ce *CommandEngine) DispatchAgentCommand(action Action) (bool, error) {
 	switch action.Name {
 	case "done":
 		ce.ActionHistory = append(ce.ActionHistory, Action{
 			Type: "agent",
 			Name: "done",
+			Reasoning: action.Reasoning,
 		})
+		ce.cancelFunc()
+		return true, nil
 
 	default:
+		return false, fmt.Errorf("invalid agent command : %s", action.Name)
 	}
 }
 
