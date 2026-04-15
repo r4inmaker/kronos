@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"time"
 
@@ -41,7 +42,7 @@ func (b *Browser) Execute(actions ...chromedp.Action) error {
 
 	for _, action := range actions {
 		throttledActions = append(throttledActions, action)
-		throttledActions = append(throttledActions, chromedp.Sleep(200 * time.Millisecond))
+		throttledActions = append(throttledActions, chromedp.Sleep(400*time.Millisecond))
 	}
 
 	return chromedp.Run(b.Context, throttledActions...)
@@ -63,6 +64,7 @@ func (b *Browser) ClickNode(id int64) chromedp.Action {
 		if !ok {
 			return fmt.Errorf("node %d not found in tree", id)
 		}
+		b.DecorateInteractable(ctx, node)
 
 		// Primary: BackendDOMNodeID
 		obj, err := dom.ResolveNode().WithBackendNodeID(node.BackendDOMNodeID).Do(ctx)
@@ -91,46 +93,45 @@ func (b *Browser) ClickNode(id int64) chromedp.Action {
 	})
 }
 
-func (b *Browser) SendKeysNode(id int64, keys string, simulate ...bool) chromedp.Action {
+func (b *Browser) SendKeysNode(id int64, keys string) chromedp.Action {
 	nodeID := accessibility.NodeID(strconv.Itoa(int(id)))
-	forceSimulate := len(simulate) > 0 && simulate[0]
+
 	return chromedp.ActionFunc(func(ctx context.Context) error {
 		node, ok := b.NodeMap[nodeID]
 		if !ok {
 			return fmt.Errorf("node %d not found in tree", id)
 		}
 
-		if !forceSimulate {
-			// Primary: BackendDOMNodeID + javascript
-			obj, err := dom.ResolveNode().WithBackendNodeID(node.BackendDOMNodeID).Do(ctx)
-			if err == nil {
-				_, exceptionDetails, err := runtime.CallFunctionOn(`function(keys) {
-                    this.scrollIntoView({behavior: "instant", block: "center"});
-                    this.focus();
-                    this.value = keys;
-                    this.dispatchEvent(new Event('input', { bubbles: true }));
-                    this.dispatchEvent(new Event('change', { bubbles: true }));
-                }`).
-					WithObjectID(obj.ObjectID).
-					WithArguments([]*runtime.CallArgument{
-						{Value: []byte(fmt.Sprintf(`%q`, keys))},
-					}).
-					Do(ctx)
-				if err == nil && exceptionDetails == nil {
-					return nil
-				}
-				b.Logger.Debug(fmt.Sprintf("primary sendkeys failed (%v), falling back to XPath", err))
-			} else {
-				b.Logger.Debug(fmt.Sprintf("primary sendkeys failed (%v), falling back to XPath", err))
-			}
+		// 1. Resolve the accessibility/tree node to an object ID
+		obj, err := dom.ResolveNode().WithBackendNodeID(node.BackendDOMNodeID).Do(ctx)
+		if err != nil {
+			return fmt.Errorf("could not resolve backend node: %v", err)
 		}
 
-		// Fallback: XPath
-		xpath := SelectorFromNode(node)
-		if xpath == "" {
-			return fmt.Errorf("primary sendkeys failed and no xpath fallback available")
+		// 2. Focus the element via JS (essential for the Input domain to target correctly)
+		_, exp, err := runtime.CallFunctionOn(`function() { this.focus(); }`).
+			WithObjectID(obj.ObjectID).Do(ctx)
+		if err != nil || exp != nil {
+			return fmt.Errorf("focus failed: %v", err)
 		}
-		return chromedp.SendKeys(xpath, keys, chromedp.BySearch).Do(ctx)
+
+		// Decorate
+		b.DecorateInteractable(ctx, node)
+
+		// 3. Iterate and type like a human
+		for _, char := range keys {
+			// Dispatch KeyEvent for each character
+			err := chromedp.KeyEvent(string(char)).Do(ctx)
+			if err != nil {
+				return err
+			}
+
+			// Add jitter/randomness (100ms - 250ms)
+			delay := time.Duration(50+rand.Intn(50)) * time.Millisecond
+			time.Sleep(delay)
+		}
+
+		return nil
 	})
 }
 
@@ -169,4 +170,53 @@ func (b *Browser) WaitForLifecycle(eventName string, timeout time.Duration) chro
 			return fmt.Errorf("timeout waiting for %s", eventName)
 		}
 	})
+}
+
+// DecorateInteractable now runs synchronously within the provided context.
+func (b *Browser) DecorateInteractable(ctx context.Context, node *accessibility.Node) error {
+	if node == nil {
+		return fmt.Errorf("node is nil")
+	}
+
+	// Resolve the node to an ObjectID
+	obj, err := dom.ResolveNode().WithBackendNodeID(node.BackendDOMNodeID).Do(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, exception, err := runtime.CallFunctionOn(`function() {
+		try {
+			const color = "#2576b0";
+			const bg = "rgba(37, 118, 176, 0.12)";
+
+			// 1. Kill all potential "active" rings from the browser
+			this.style.setProperty('outline', 'none', 'important');
+			this.style.setProperty('border-color', 'transparent', 'important');
+
+			// 2. Use a spread shadow to simulate a 2px border
+			// Syntax: x-offset y-offset blur spread color
+			// This won't change the size of your input box at all.
+			this.style.setProperty('box-shadow', '0 0 0 2px ' + color, 'important');
+			
+			// 3. Set Background and Text
+			this.style.setProperty('background-color', bg, 'important');
+			this.style.setProperty('color', color, 'important');
+
+			// 4. Ensure it's visible and focused
+			this.style.setProperty('visibility', 'visible', 'important');
+			
+			this.scrollIntoView({behavior: "instant", block: "center"});
+			this.focus();
+		} catch (e) {}
+	}`).WithObjectID(obj.ObjectID).Do(ctx)
+
+	if err != nil {
+		return err
+	}
+	// Correct way to check the exception details
+	if exception != nil {
+		return fmt.Errorf("decoration exception: %s", exception.Exception.Description)
+	}
+
+	return nil
 }

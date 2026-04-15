@@ -25,7 +25,7 @@ func NewCommandEngine(browser *browser.Browser, sysPrompt, task string, cancelFu
 		Browser:       browser,
 		Prompt:        initPrompt,
 		ActionHistory: make([]Action, 0),
-		cancelFunc: 	 cancelFunc,	
+		cancelFunc:    cancelFunc,
 	}
 }
 
@@ -35,157 +35,106 @@ func (ce *CommandEngine) DispatchCommands(resp *AgentResponse) (bool, error) {
 		return false, fmt.Errorf("agent responded with empty action slice")
 	}
 
+	exit := false
 	for _, action := range resp.Actions {
-		switch action.Type {
-		case "browser":
-			err := ce.DispatchBrowserCommand(action)
-			if err != nil {
-				return false, err
-			}
-			// ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
-
-		case "agent":
-			exit, err := ce.DispatchAgentCommand(action)
-			if err != nil {
-				return false, err
-			}
-			if exit {
-				return true, err
-			}
-			// ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
-
-		default:
-			return false, fmt.Errorf("unknown action type: %s", action.Type)
+		status, err := ce.DispatchCommand(action)
+		if status {
+			exit = true
+		}
+		if err != nil {
+			return exit, err
 		}
 	}
 
-	return false, nil
+	return exit, nil
 }
 
 // Browser command dispatch
-func (ce *CommandEngine) DispatchBrowserCommand(action Action) error {
+func (ce *CommandEngine) DispatchCommand(action Action) (bool, error) {
+	exit := false
+
+	// Dispatch based on action name
 	switch action.Name {
 
+	// Navigate
 	case "navigate":
 		var params NavigateParams
 		if err := json.Unmarshal(action.Params, &params); err != nil {
-			return err
+			return exit, err
 		}
-
-		// Execute action
-		var result string
 		if err := ce.Browser.Execute(ce.Browser.Navigate(params.URL)); err != nil {
-			result = fmt.Sprintf("failure, error: %v", err)
-		} else {
-			result = "success"
+			return exit, err
 		}
 
-		// Append to history
+		// Append and log
 		ce.ActionHistory = append(ce.ActionHistory, Action{
-			Type:        "browser",
 			Name:        "navigate",
 			Description: action.Description,
 			Reasoning:   action.Reasoning,
-			Result:      result,
 		})
+		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
 
-		// Log
-		ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
-
+	// Click
 	case "click":
 		var params ClickParams
 		if err := json.Unmarshal(action.Params, &params); err != nil {
-			return err
+			return exit, err
 		}
-
-		// Description
-		description := fmt.Sprintf("clicked node [%s]", params.NodeID)
+		description := fmt.Sprintf("clicked node [%d]", params.NodeID)
 		if node, ok := ce.Browser.NodeMap[nodeID(params.NodeID)]; ok {
-			description = fmt.Sprintf("clicked node %s",
-				browser.FormatNode(node),
-			)
+			description = fmt.Sprintf("clicked node %s", browser.FormatNode(node))
 		}
-
-		// Execute action
-		var result string
 		if err := ce.Browser.Execute(ce.Browser.ClickNode(params.NodeID)); err != nil {
-			result = fmt.Sprintf("failure, error: %v", err)
-		} else {
-			result = "success"
+			return exit, err
 		}
 
-		// Append to history
+		// Append and log
 		ce.ActionHistory = append(ce.ActionHistory, Action{
-			Type:        "browser",
 			Name:        "click",
 			Description: description,
 			Reasoning:   action.Reasoning,
-			Result:      result,
 		})
+		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
 
-		// Log
-		ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
-
+	// Send keys
 	case "send_keys":
 		var params SendKeysParams
 		if err := json.Unmarshal(action.Params, &params); err != nil {
-			return err
+			return exit, err
 		}
-
-		// Description
-		description := fmt.Sprintf("send keys %q to node [%s]", params.Keys, params.NodeID)
+		description := fmt.Sprintf("sent keys %q to node [%d]", params.Keys, params.NodeID)
 		if node, ok := ce.Browser.NodeMap[nodeID(params.NodeID)]; ok {
-			description = fmt.Sprintf("sent keys %q to node %s",
-				params.Keys,
-				browser.FormatNode(node),
-			)
+			description = fmt.Sprintf("sent keys %q to node %s", params.Keys, browser.FormatNode(node))
+		}
+		if err := ce.Browser.Execute(ce.Browser.SendKeysNode(params.NodeID, params.Keys)); err != nil {
+			return exit, err
 		}
 
-		// Execute action
-		var result string
-		if err := ce.Browser.Execute(ce.Browser.SendKeysNode(params.NodeID, params.Keys, params.Simulate)); err != nil {
-			result = fmt.Sprintf("failed sending keys %q to node, error: %v", params.Keys, err)
-		} else {
-			result = "success"
-		}
-
-		// Append to history
+		// Append and log
 		ce.ActionHistory = append(ce.ActionHistory, Action{
-			Type:        "browser",
 			Name:        "send_keys",
 			Description: description,
 			Reasoning:   action.Reasoning,
-			Result:      result,
 		})
+		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
 
-		// Log
-		ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
-
-	default:
-		return fmt.Errorf("invalid browser command: %s", action.Name)
-	}
-
-	return nil
-}
-
-// Agent command dispatch
-func (ce *CommandEngine) DispatchAgentCommand(action Action) (bool, error) {
-	switch action.Name {
+	// Done
 	case "done":
 		ce.ActionHistory = append(ce.ActionHistory, Action{
-			Type: "agent",
-			Name: "done",
+			Name:      "done",
 			Reasoning: action.Reasoning,
 		})
-		// Log
-		ce.Browser.Logger.Info(fmt.Sprintf("%s-action: [%s]\n\tReasoning: %q\n", action.Type, action.Name, action.Reasoning))
 
+		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
 		ce.cancelFunc()
 		return true, nil
 
 	default:
-		return false, fmt.Errorf("invalid agent command : %s", action.Name)
+		ce.cancelFunc()
+		return true, fmt.Errorf("invalid browser command: %s", action.Name)
 	}
+
+	return exit, nil
 }
 
 // Utility functions
@@ -200,8 +149,8 @@ func (ce *CommandEngine) FormatActionHistory(max int) string {
 
 	var sb strings.Builder
 	for _, a := range history {
-		sb.WriteString(fmt.Sprintf("[%s] (%s Reasoning: %q) → %s\n",
-			a.Name, a.Description, a.Reasoning, a.Result))
+		sb.WriteString(fmt.Sprintf("[%s] (%s | Reasoning: %q)\n",
+			a.Name, a.Description, a.Reasoning))
 	}
 	return sb.String()
 }

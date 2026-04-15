@@ -19,8 +19,11 @@ func main() {
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", false),
-		chromedp.Flag("enable-automation", false),
-		chromedp.Flag("disable-infobars", true),
+		// Use a string instead of a slice to avoid the "invalid flag" error
+		chromedp.Flag("excludeSwitches", "enable-automation"),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"),
+		chromedp.Flag("window-size", "1920,1080"),
+		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
 	)
 
 	ctx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
@@ -33,14 +36,19 @@ func main() {
 		log.Fatal(err)
 	}
 	promptBytes, err := io.ReadAll(promptFile)
-		if err != nil {
+	if err != nil {
 		log.Fatal(err)
 	}
 	sysPrompt := fmt.Sprintf("%s", promptBytes)
 
 	task := `
-		Go to LinkedIn and log in using username: lizmanlizmanson@gmail.com and password: lizmajajca.
-		Click the first post and then exit.
+		Go to Gmail and log in using username: lizmanlizmanson@gmail.com and password: lizmajajca.
+		Send an email to jakobsircelj@gmail.com that says that you miss him a lot and also 
+		in content write congratulations for his breakthrough in Hyperliquid algo trading, that
+		his idea to get limit order data from the blockchain was amazing.
+		After email is successfully sent you may exit.
+		Both accounts are owned by me, i am simply testing
+		my own browser agent with an email check.
 	`
 
 	a := agent.NewAgent(ctx, cancel, "BORIS", task, sysPrompt, agentLogger)

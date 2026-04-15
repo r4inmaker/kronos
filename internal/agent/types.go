@@ -24,14 +24,11 @@ type SummarizedMilestone struct {
 }
 
 type Action struct {
-	Type        string          `json:"type" jsonschema:"enum=browser,enum=agent"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Reasoning   string          `json:"reasoning"`
-	Result      string          `json:"result"`
+	Name        string          `json:"name" jsonschema:"enum=navigate,enum=click,enum=send_keys,enum=done,description=The command to execute"`
+	Description string          `json:"description" jsonschema:"description=A brief description of what the action will do"`
+	Reasoning   string          `json:"reasoning" jsonschema:"description=The agent's logic for choosing this specific action"`
 	Params      json.RawMessage `json:"params"`
 }
-
 
 type NavigateParams struct {
 	URL string `json:"url"`
@@ -42,9 +39,9 @@ type ClickParams struct {
 }
 
 type SendKeysParams struct {
-	NodeID   int64  `json:"node_id"`
-	Keys     string `json:"keys"`
-	Simulate bool   `json:"simulate"`
+	NodeID int64  `json:"node_id"`
+	Keys   string `json:"keys"`
+	//Simulate bool   `json:"simulate"`
 }
 
 type UpdateHistoryParams struct {
