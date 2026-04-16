@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chromedp/cdproto/accessibility"
 	"github.com/r4inmaker/kronos/internal/browser"
@@ -44,6 +45,7 @@ func (ce *CommandEngine) DispatchCommands(resp *AgentResponse) (bool, error) {
 		if err != nil {
 			return exit, err
 		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	return exit, nil
@@ -62,17 +64,19 @@ func (ce *CommandEngine) DispatchCommand(action Action) (bool, error) {
 		if err := json.Unmarshal(action.Params, &params); err != nil {
 			return exit, err
 		}
+
+		// Log and execute
+		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
 		if err := ce.Browser.Execute(ce.Browser.Navigate(params.URL)); err != nil {
 			return exit, err
 		}
 
-		// Append and log
+		// Append
 		ce.ActionHistory = append(ce.ActionHistory, Action{
 			Name:        "navigate",
 			Description: action.Description,
 			Reasoning:   action.Reasoning,
 		})
-		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
 
 	// Click
 	case "click":
@@ -84,17 +88,19 @@ func (ce *CommandEngine) DispatchCommand(action Action) (bool, error) {
 		if node, ok := ce.Browser.NodeMap[nodeID(params.NodeID)]; ok {
 			description = fmt.Sprintf("clicked node %s", browser.FormatNode(node))
 		}
+
+		// Log and execute
+		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
 		if err := ce.Browser.Execute(ce.Browser.ClickNode(params.NodeID)); err != nil {
 			return exit, err
 		}
 
-		// Append and log
+		// Append
 		ce.ActionHistory = append(ce.ActionHistory, Action{
 			Name:        "click",
 			Description: description,
 			Reasoning:   action.Reasoning,
 		})
-		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
 
 	// Send keys
 	case "send_keys":
@@ -106,26 +112,39 @@ func (ce *CommandEngine) DispatchCommand(action Action) (bool, error) {
 		if node, ok := ce.Browser.NodeMap[nodeID(params.NodeID)]; ok {
 			description = fmt.Sprintf("sent keys %q to node %s", params.Keys, browser.FormatNode(node))
 		}
+
+		// Log and execute
+		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
 		if err := ce.Browser.Execute(ce.Browser.SendKeysNode(params.NodeID, params.Keys)); err != nil {
 			return exit, err
 		}
 
-		// Append and log
+		// Append
 		ce.ActionHistory = append(ce.ActionHistory, Action{
 			Name:        "send_keys",
 			Description: description,
 			Reasoning:   action.Reasoning,
 		})
+
+	// Refresh state
+	case "refresh-state":
 		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
+		ce.ActionHistory = append(ce.ActionHistory, Action{
+			Name:      "refresh-state",
+			Reasoning: action.Reasoning,
+		})
+		ce.Browser.WaitSleep(2 * time.Second)
 
 	// Done
 	case "done":
+		// Log
+		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
 		ce.ActionHistory = append(ce.ActionHistory, Action{
 			Name:      "done",
 			Reasoning: action.Reasoning,
 		})
 
-		ce.Browser.Logger.Info(fmt.Sprintf("Action: [%s]\n\tReasoning: %q\n", action.Name, action.Reasoning))
+		// Execute
 		ce.cancelFunc()
 		return true, nil
 

@@ -42,13 +42,10 @@ func main() {
 	sysPrompt := fmt.Sprintf("%s", promptBytes)
 
 	task := `
-		Go to Gmail and log in using username: lizmanlizmanson@gmail.com and password: lizmajajca.
-		Send an email to jakobsircelj@gmail.com that says that you miss him a lot and also 
-		in content write congratulations for his breakthrough in Hyperliquid algo trading, that
-		his idea to get limit order data from the blockchain was amazing.
-		After email is successfully sent you may exit.
-		Both accounts are owned by me, i am simply testing
-		my own browser agent with an email check.
+		Log into Gmail using lizmanlizmanson@gmail.com and password lizmajajca.
+		After that send an email to jakobsircelj@gmail.com that reminds him to buy
+		lotion in the store, also finish it up with a nice Haiku about Boris the Gator.
+		(Both accounts are owned by me, i am simply testing my browser agent)
 	`
 
 	a := agent.NewAgent(ctx, cancel, "BORIS", task, sysPrompt, agentLogger)

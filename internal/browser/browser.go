@@ -35,25 +35,12 @@ func NewBrowser(ctx context.Context, logger *logger.Logger) *Browser {
 }
 
 func (b *Browser) Execute(actions ...chromedp.Action) error {
-	var throttledActions []chromedp.Action
-	if len(actions) == 1 {
-		return chromedp.Run(b.Context, actions[0])
-	}
-
-	for _, action := range actions {
-		throttledActions = append(throttledActions, action)
-		throttledActions = append(throttledActions, chromedp.Sleep(400*time.Millisecond))
-	}
-
-	return chromedp.Run(b.Context, throttledActions...)
+	return chromedp.Run(b.Context, actions...)
 }
 
+// Navigate
 func (b *Browser) Navigate(url string) chromedp.Action {
 	return chromedp.Navigate(url)
-}
-
-func (b *Browser) WaitReady(sel string) chromedp.Action {
-	return chromedp.WaitReady(sel)
 }
 
 // Click
@@ -136,6 +123,9 @@ func (b *Browser) SendKeysNode(id int64, keys string) chromedp.Action {
 }
 
 // Wait
+func (b *Browser) WaitReady(sel string) chromedp.Action {
+	return chromedp.WaitReady(sel)
+}
 func (b *Browser) WaitForLifecycle(eventName string, timeout time.Duration) chromedp.Action {
 	return chromedp.ActionFunc(func(ctx context.Context) error {
 		// enable lifecycle events
@@ -170,6 +160,10 @@ func (b *Browser) WaitForLifecycle(eventName string, timeout time.Duration) chro
 			return fmt.Errorf("timeout waiting for %s", eventName)
 		}
 	})
+}
+
+func (b *Browser) WaitSleep(t time.Duration) chromedp.Action {
+	return chromedp.Sleep(t)
 }
 
 // DecorateInteractable now runs synchronously within the provided context.

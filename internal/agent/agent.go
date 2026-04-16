@@ -98,6 +98,7 @@ func (a *Agent) Run() {
 		if waitFlag {
 			a.Browser.Execute(
 				a.Browser.WaitForLifecycle("networkIdle", 5*time.Second),
+				a.Browser.WaitReady("body"),
 			)
 		}
 		waitFlag = true
