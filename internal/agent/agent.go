@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -97,6 +96,8 @@ func (a *Agent) Run() {
 	for {
 		if waitFlag {
 			a.Browser.Execute(
+				a.Browser.SuppressConsole(),
+				a.Browser.InjectLogo(),
 				a.Browser.WaitForLifecycle("networkIdle", 5*time.Second),
 				a.Browser.WaitReady("body"),
 			)
@@ -104,17 +105,17 @@ func (a *Agent) Run() {
 		waitFlag = true
 
 		if err := a.Browser.BuildTree(); err != nil {
-			log.Fatal(err)
+			a.Logger.Error(err.Error())
 		}
 
 		resp, err := a.Request()
 		if err != nil {
-			log.Fatal(err)
+			a.Logger.Error(err.Error())
 		}
 
 		exit, err := a.DispatchCommands(resp)
 		if err != nil {
-			log.Fatal(err)
+			a.Logger.Error(err.Error())
 		}
 		if exit {
 			return

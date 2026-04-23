@@ -2,8 +2,11 @@ package browser
 
 import (
 	"context"
+	_ "embed"
+	"encoding/base64"
 	"fmt"
 	"math/rand"
+	"os"
 	"strconv"
 	"time"
 
@@ -118,6 +121,9 @@ func (b *Browser) SendKeysNode(id int64, keys string) chromedp.Action {
 			time.Sleep(delay)
 		}
 
+		// Undecorate
+		b.UndecorateInteractable(ctx, node)
+
 		return nil
 	})
 }
@@ -180,8 +186,8 @@ func (b *Browser) DecorateInteractable(ctx context.Context, node *accessibility.
 
 	_, exception, err := runtime.CallFunctionOn(`function() {
 		try {
-			const color = "#2576b0";
-			const bg = "rgba(37, 118, 176, 0.12)";
+			const color = "#6bb5e8";
+			const bg = "rgba(4, 46, 52, 0)";
 
 			// 1. Kill all potential "active" rings from the browser
 			this.style.setProperty('outline', 'none', 'important');
@@ -213,4 +219,188 @@ func (b *Browser) DecorateInteractable(ctx context.Context, node *accessibility.
 	}
 
 	return nil
+}
+
+// UndecorateInteractable removes the decoration styles applied by DecorateInteractable
+func (b *Browser) UndecorateInteractable(ctx context.Context, node *accessibility.Node) error {
+	if node == nil {
+		return fmt.Errorf("node is nil")
+	}
+
+	// Resolve the node to an ObjectID
+	obj, err := dom.ResolveNode().WithBackendNodeID(node.BackendDOMNodeID).Do(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, exception, err := runtime.CallFunctionOn(`function() {
+		try {
+			// Remove the styles we added
+			this.style.removeProperty('outline');
+			this.style.removeProperty('border-color');
+			this.style.removeProperty('box-shadow');
+			this.style.removeProperty('background-color');
+			this.style.removeProperty('color');
+			this.style.removeProperty('visibility');
+		} catch (e) {}
+	}`).WithObjectID(obj.ObjectID).Do(ctx)
+
+	if err != nil {
+		return err
+	}
+	if exception != nil {
+		return fmt.Errorf("undecoration exception: %s", exception.Exception.Description)
+	}
+
+	return nil
+}
+
+// Logo
+func (b *Browser) InjectLogo() chromedp.Action {
+	return chromedp.ActionFunc(func(ctx context.Context) error {
+		// Read the SVG file from project root
+		svgData, err := os.ReadFile("img/logo.svg")
+		if err != nil {
+			// Try alternative path (in case working directory is different)
+			svgData, err = os.ReadFile("../../img/logo.svg")
+			if err != nil {
+				b.Logger.Debug(fmt.Sprintf("Could not read logo file: %v", err))
+				return nil // Don't fail if logo missing, just skip
+			}
+		}
+
+		// Encode SVG as base64 data URL
+		logoBase64 := base64.StdEncoding.EncodeToString(svgData)
+		dataURL := "data:image/svg+xml;base64," + logoBase64
+
+		// JavaScript with underscore blinker
+		jsCode := fmt.Sprintf(`
+			(function() {
+				if (document.getElementById('kronos-logo-container')) {
+					return;
+				}
+				
+				// Create main container
+				const container = document.createElement('div');
+				container.id = 'kronos-logo-container';
+				
+				// Create inner wrapper for text and logo
+				const wrapper = document.createElement('div');
+				wrapper.id = 'kronos-wrapper';
+				
+				// Add styles
+				const style = document.createElement('style');
+				style.textContent = 
+					"#kronos-logo-container {" +
+					"position: fixed !important;" +
+					"top: 20px !important;" +
+					"right: 20px !important;" +
+					"z-index: 999999 !important;" +
+					"background: rgba(0, 0, 0, 0.85) !important;" +
+					"border-radius: 12px !important;" +
+					"backdrop-filter: blur(10px) !important;" +
+					"padding: 12px 16px !important;" +
+					"border: 1px solid rgba(37, 118, 176, 0.4) !important;" +
+					"box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;" +
+					"}" +
+					"#kronos-wrapper {" +
+					"display: flex !important;" +
+					"align-items: center !important;" +
+					"gap: 12px !important;" +
+					"flex-direction: row !important;" +
+					"}" +
+					"#kronos-logo {" +
+					"width: 36px !important;" +
+					"height: 36px !important;" +
+					"display: block !important;" +
+					"order: 2 !important;" +
+					"}" +
+					"#kronos-text {" +
+					"color: #6bb5e8 !important;" +
+					"font-family: 'Courier New', monospace !important;" +
+					"font-size: 13px !important;" +
+					"font-weight: 500 !important;" +
+					"order: 1 !important;" +
+					"}" +
+					"#kronos-blinker {" +
+					"display: inline-block !important;" +
+					"color: #6bb5e8 !important;" +
+					"font-family: 'Courier New', monospace !important;" +
+					"font-size: 13px !important;" +
+					"font-weight: 500 !important;" +
+					"animation: kronosBlink 1s step-end infinite !important;" +
+					"}" +
+					"@keyframes kronosBlink {" +
+					"0%%, 100%% { opacity: 1; }" +
+					"50%% { opacity: 0; }" +
+					"}";
+				
+				document.head.appendChild(style);
+				
+				// Create logo image
+				const logo = document.createElement('img');
+				logo.id = 'kronos-logo';
+				logo.src = '%s';
+				logo.alt = 'Kronos Logo';
+				logo.title = 'Kronos Automation';
+				
+				// Create text container
+				const textContainer = document.createElement('div');
+				textContainer.id = 'kronos-text';
+				
+				// Full message to type
+				const fullMessage = "Your browser is being controlled by Kronos";
+				let index = 0;
+				
+				// Create span for the typed text
+				const textSpan = document.createElement('span');
+				textContainer.appendChild(textSpan);
+				
+				// Create underscore blinker
+				const blinker = document.createElement('span');
+				blinker.id = 'kronos-blinker';
+				blinker.textContent = '_';
+				textContainer.appendChild(blinker);
+				
+				// Typewriter effect
+				function typeWriter() {
+					if (index < fullMessage.length) {
+						textSpan.textContent += fullMessage.charAt(index);
+						index++;
+						setTimeout(typeWriter, 100);
+					}
+				}
+				
+				// Start the typewriter effect
+				typeWriter();
+				
+				// Assemble everything
+				wrapper.appendChild(textContainer);
+				wrapper.appendChild(logo);
+				container.appendChild(wrapper);
+				document.body.appendChild(container);
+			})();
+		`, dataURL)
+
+		_, _, err = runtime.Evaluate(jsCode).Do(ctx)
+		if err != nil {
+			b.Logger.Debug(fmt.Sprintf("Failed to inject logo: %v", err))
+			return err
+		}
+
+		//b.Logger.Info("Logo injected successfully")
+		return nil
+	})
+}
+
+// Utility Functions
+func (b *Browser) SuppressConsole() chromedp.Action {
+	return chromedp.ActionFunc(func(ctx context.Context) error {
+		_, _, err := runtime.Evaluate(`
+            console.log = function(){};
+            console.warn = function(){};
+            console.error = function(){};
+        `).Do(ctx)
+		return err
+	})
 }
