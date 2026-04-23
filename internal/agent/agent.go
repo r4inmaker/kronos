@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -81,9 +82,11 @@ func (a *Agent) Request() (*AgentResponse, error) {
 	}
 
 	content := resp.Choices[0].Message.Content
+	//a.Logger.Debug(fmt.Sprintf("Raw response: %s", content))
 
 	var agentResp AgentResponse
-	if err := json.Unmarshal([]byte(content), &agentResp); err != nil {
+	if err := json.NewDecoder(strings.NewReader(content)).Decode(&agentResp); err != nil {
+		a.Logger.Debug(fmt.Sprintf("FAILED: %s", content))
 		return nil, err
 	}
 
@@ -111,6 +114,8 @@ func (a *Agent) Run() {
 		resp, err := a.Request()
 		if err != nil {
 			a.Logger.Error(err.Error())
+			a.Logger.Info("Finished.")
+			return
 		}
 
 		exit, err := a.DispatchCommands(resp)
@@ -118,6 +123,7 @@ func (a *Agent) Run() {
 			a.Logger.Error(err.Error())
 		}
 		if exit {
+			a.Logger.Info("Finished.")
 			return
 		}
 	}

@@ -60,6 +60,8 @@ INPUT INTERACTION:
 - Always click a textbox, searchbox, or any input field before sending keys to it
 - The correct sequence is always: click (node_id) → send_keys (node_id)
 - Never send_keys to a field that has not been explicitly clicked first in the current or immediately preceding action
+- Check if the input nodes that you require have their text value inserted, if they don't you might need to re-insert the
+  creds
 
 INTERPRETING ACTION HISTORY:
 - Action history records what was dispatched to the browser, NOT whether it had the intended effect

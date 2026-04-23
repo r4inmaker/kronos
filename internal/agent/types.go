@@ -41,7 +41,6 @@ type ClickParams struct {
 type SendKeysParams struct {
 	NodeID int64  `json:"node_id"`
 	Keys   string `json:"keys"`
-	//Simulate bool   `json:"simulate"`
 }
 
 type UpdateHistoryParams struct {

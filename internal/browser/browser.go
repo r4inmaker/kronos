@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/accessibility"
@@ -25,6 +26,7 @@ type Browser struct {
 	NodeMap    map[accessibility.NodeID]*accessibility.Node
 	FilterFunc nodeFilterFunc
 	Root       *accessibility.Node
+	treeMu     *sync.Mutex
 }
 
 func NewBrowser(ctx context.Context, logger *logger.Logger) *Browser {
@@ -34,6 +36,7 @@ func NewBrowser(ctx context.Context, logger *logger.Logger) *Browser {
 		Nodes:      make([]*accessibility.Node, 0),
 		NodeMap:    make(map[accessibility.NodeID]*accessibility.Node),
 		FilterFunc: FilterNodeDefault(),
+		treeMu:     &sync.Mutex{},
 	}
 }
 
@@ -83,6 +86,7 @@ func (b *Browser) ClickNode(id int64) chromedp.Action {
 	})
 }
 
+// Send keys
 func (b *Browser) SendKeysNode(id int64, keys string) chromedp.Action {
 	nodeID := accessibility.NodeID(strconv.Itoa(int(id)))
 
@@ -99,7 +103,7 @@ func (b *Browser) SendKeysNode(id int64, keys string) chromedp.Action {
 		}
 
 		// 2. Focus the element via JS (essential for the Input domain to target correctly)
-		_, exp, err := runtime.CallFunctionOn(`function() { this.focus(); }`).
+		_, exp, err := runtime.CallFunctionOn(`function() { this.focus(); this.select()}`).
 			WithObjectID(obj.ObjectID).Do(ctx)
 		if err != nil || exp != nil {
 			return fmt.Errorf("focus failed: %v", err)
@@ -186,8 +190,8 @@ func (b *Browser) DecorateInteractable(ctx context.Context, node *accessibility.
 
 	_, exception, err := runtime.CallFunctionOn(`function() {
 		try {
-			const color = "#6bb5e8";
-			const bg = "rgba(4, 46, 52, 0)";
+			const color = "#31b0ff";
+			const bg = "rgba(0, 220, 254, 0.33)";
 
 			// 1. Kill all potential "active" rings from the browser
 			this.style.setProperty('outline', 'none', 'important');
@@ -196,7 +200,7 @@ func (b *Browser) DecorateInteractable(ctx context.Context, node *accessibility.
 			// 2. Use a spread shadow to simulate a 2px border
 			// Syntax: x-offset y-offset blur spread color
 			// This won't change the size of your input box at all.
-			this.style.setProperty('box-shadow', '0 0 0 2px ' + color, 'important');
+			//this.style.setProperty('box-shadow', '0 0 0 2px ' + color, 'important');
 			
 			// 3. Set Background and Text
 			this.style.setProperty('background-color', bg, 'important');

@@ -34,12 +34,12 @@ func main() {
 	sysPrompt := fmt.Sprintf("%s", promptBytes)
 
 	task := `
-		Log into Gmail using lizmanlizmanson@gmail.com and password lizmajajca.
-		After that send an email to jakobsircelj@gmail.com that reminds him to buy
-		wd-40 in the store, also finish it up with a nice Haiku about Pokemon.
-		(Both accounts are owned by me, i am simply testing my browser agent)
+		Go ro Ryanair and find me the cheapest flight from Italy to Barcelona.
+		Explore for the most optimal airport from Italy before clicking submit,
+		make sure it exists in the dropdown.
+		Book the flight. 2 cards, 5 day trip.
 	`
 
-	a := agent.NewAgent(ctx, cancel, "BORIS", task, sysPrompt, agentLogger)
+	a := agent.NewAgent(ctx, cancel, "", task, sysPrompt, agentLogger)
 	a.Run()
 }
