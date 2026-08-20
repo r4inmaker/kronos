@@ -34,10 +34,11 @@ func main() {
 	sysPrompt := fmt.Sprintf("%s", promptBytes)
 
 	task := `
-		Go ro Ryanair and find me the cheapest flight from Italy to Barcelona.
-		Explore for the most optimal airport from Italy before clicking submit,
-		make sure it exists in the dropdown.
-		Book the flight. 2 cards, 5 day trip.
+		Go to mimovrste.com and find the cheapest variant
+		of Beko BDIN38561P washing machine. 
+		Add it to cart, proceed to checkout 
+		and then quit before you purchase it.
+		I just want to see if you can do it.
 	`
 
 	a := agent.NewAgent(ctx, cancel, "", task, sysPrompt, agentLogger)
